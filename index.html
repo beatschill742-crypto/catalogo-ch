@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo Digital | Precios y Productos</title>
+    <!-- Tailwind CSS para el diseño profesional -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse para leer archivos CSV localmente -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            background-color: #f8fafc;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        /* Ocultar barra de desplazamiento manteniendo funcionalidad */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="book-open" class="text-blue-600 w-8 h-8"></i>
+                    <span class="font-bold text-xl tracking-tight text-slate-900">Catálogo<span class="text-blue-600">Pro</span></span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <label for="csv-upload" class="cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 border border-blue-200">
+                        <i data-lucide="upload" class="w-4 h-4"></i>
+                        <span class="hidden sm:inline">Cargar CSV Completo</span>
+                        <span class="sm:hidden">Cargar CSV</span>
+                    </label>
+                    <input type="file" id="csv-upload" accept=".csv" class="hidden">
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- Header & Controls -->
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div class="relative w-full md:w-1/2 lg:w-1/3">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i data-lucide="search" class="text-slate-400 w-5 h-5"></i>
+                </div>
+                <input type="text" id="search-input" placeholder="Buscar por nombre, SKU o código de barras..." class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm">
+            </div>
+
+            <div class="flex w-full md:w-auto gap-4">
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <i data-lucide="arrow-down-up" class="text-slate-400 w-4 h-4 hidden sm:block"></i>
+                    <select id="sort-select" class="block w-full border border-slate-300 text-slate-700 py-2 px-3 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none bg-white">
+                        <option value="default">Ordenar por...</option>
+                        <option value="price-asc">Precio: Menor a Mayor</option>
+                        <option value="price-desc">Precio: Mayor a Menor</option>
+                        <option value="sku-asc">SKU: A-Z</option>
+                    </select>
+                </div>
+                <div class="text-sm text-slate-500 flex items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 whitespace-nowrap">
+                    <span id="product-count" class="font-bold text-slate-700 mr-1">0</span> Productos
+                </div>
+            </div>
+        </div>
+
+        <!-- States -->
+        <div id="loading-state" class="hidden flex-col items-center justify-center py-20">
+            <i data-lucide="loader-2" class="w-10 h-10 text-blue-600 animate-spin mb-4"></i>
+            <p class="text-slate-500 font-medium">Procesando catálogo...</p>
+        </div>
+
+        <div id="empty-state" class="hidden flex-col items-center justify-center py-20 text-center bg-white rounded-xl border border-dashed border-slate-300">
+            <div class="bg-slate-50 p-4 rounded-full mb-4">
+                <i data-lucide="package-search" class="w-10 h-10 text-slate-400"></i>
+            </div>
+            <h3 class="text-lg font-medium text-slate-900 mb-1">No se encontraron productos</h3>
+            <p class="text-slate-500 max-w-sm">Intenta con otra búsqueda o carga tu archivo CSV con el botón superior para ver todo tu inventario.</p>
+        </div>
+
+        <!-- Catalog Grid -->
+        <div id="catalog-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Cards will be dynamically injected here -->
+        </div>
+
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 py-6 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-sm text-slate-500">
+            Catálogo interactivo generado automáticamente. Los datos se procesan de manera local en tu navegador.
+        </div>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // DOM Elements
+        const grid = document.getElementById('catalog-grid');
+        const searchInput = document.getElementById('search-input');
+        const sortSelect = document.getElementById('sort-select');
+        const productCount = document.getElementById('product-count');
+        const fileUpload = document.getElementById('csv-upload');
+        const emptyState = document.getElementById('empty-state');
+        const loadingState = document.getElementById('loading-state');
+
+        // State variables
+        let products = [];
+        let filteredProducts = [];
+
+        // Sample data from the provided snippet
+        const sampleData = [
+            { ub: "E1-0", sku: "AA100-50B2", barcode: "6932666531106", nameEs: "50 bolígrafos con insertos", inner: "10", caja: "40", price: 105.875 },
+            { ub: "E2-2", sku: "AA200-50B2", barcode: "6932666530017", nameEs: "50 bolígrafos con insertos", inner: "10", caja: "40", price: 121 },
+            { ub: "E1-2", sku: "AA201-01XE", barcode: "6942389113046", nameEs: "Paquete de 50 bolígrafos con fundas insertables", inner: "8", caja: "32", price: 98.3125 },
+            { ub: "E1-2", sku: "AA201-02XE", barcode: "6942389113152", nameEs: "Bolígrafo de 50 piezas con funda insertable", inner: "8", caja: "32", price: 98.3125 },
+            { ub: "F19-2", sku: "WH101-10A4", barcode: "6942389130210", nameEs: "Clip para varilla de tracción A4 color sólido 10 mm + acabado espejo", inner: "10", caja: "600", price: 6.05 },
+            { ub: "F19-2", sku: "WQ2-12", barcode: "6932666521251", nameEs: "Página de categoría PP", inner: "24", caja: "240", price: 24.2 },
+            { ub: "F19-2", sku: "WQ2-20", barcode: "6932666521268", nameEs: "Página de categoría", inner: "20", caja: "120", price: 37.8125 },
+            { ub: "F19-2", sku: "WR2-3", barcode: "6932666521213", nameEs: "Tres conjuntos de columnas de archivo", inner: "10", caja: "50", price: 105.875 },
+            { ub: "F19-2", sku: "WR5-2N", barcode: "6932666561974", nameEs: "Estante para archivos", inner: "12", caja: "12", price: 302.5 },
+            { ub: "D7-1", sku: "YA1-B5", barcode: "6932666582191", nameEs: "Balón de baloncesto de goma juvenil n.° 5", inner: "5", caja: "50", price: 226.875 },
+            { ub: "D7-1", sku: "12FNDS", barcode: "N/A", nameEs: "12 fundas de silicona + acrílico para tarjetas", inner: "10", caja: "60", price: 217.8 }
+        ];
+
+        // Format currency
+        const formatPrice = (price) => {
+            if(isNaN(price) || price === null) return "Consultar";
+            return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(price);
+        };
+
+        // Render Cards
+        const renderCatalog = (dataToRender) => {
+            grid.innerHTML = '';
+            productCount.textContent = dataToRender.length;
+
+            if (dataToRender.length === 0) {
+                emptyState.classList.remove('hidden');
+                grid.classList.add('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+                grid.classList.remove('hidden');
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            dataToRender.forEach(product => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl overflow-hidden border border-slate-200 transition-all duration-300 card-hover flex flex-col h-full';
+                
+                // Card HTML Structure
+                card.innerHTML = `
+                    <div class="bg-slate-100 h-48 w-full flex flex-col items-center justify-center relative border-b border-slate-200">
+                        <i data-lucide="image" class="w-12 h-12 text-slate-300 mb-2"></i>
+                        <span class="text-xs text-slate-400 font-medium">Imagen no disponible</span>
+                        <div class="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-slate-600 shadow-sm border border-slate-100">
+                            Ub: ${product.ub || 'N/D'}
+                        </div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div class="text-xs font-semibold text-blue-600 mb-1 uppercase tracking-wider">${product.sku}</div>
+                        <h3 class="text-base font-bold text-slate-800 leading-snug mb-2 line-clamp-2" title="${product.nameEs}">${product.nameEs || 'Producto sin nombre'}</h3>
+                        
+                        <div class="flex items-center gap-1 text-slate-500 mb-4 text-xs font-mono bg-slate-50 py-1 px-2 rounded w-max border border-slate-100">
+                            <i data-lucide="barcode" class="w-3 h-3"></i>
+                            ${product.barcode || 'N/A'}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 mt-auto pt-4 border-t border-slate-100 mb-4">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 font-bold uppercase">Inner</span>
+                                <span class="text-sm font-medium text-slate-700">${product.inner || '-'} pzs</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 font-bold uppercase">Caja</span>
+                                <span class="text-sm font-medium text-slate-700">${product.caja || '-'} pzs</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-end justify-between mt-2">
+                            <div class="flex flex-col">
+                                <span class="text-xs text-slate-500 font-medium">Precio (90 Días)</span>
+                                <span class="text-xl font-bold text-emerald-600">${formatPrice(product.price)}</span>
+                            </div>
+                            <button class="bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors" title="Añadir/Detalle">
+                                <i data-lucide="plus" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                fragment.appendChild(card);
+            });
+
+            grid.appendChild(fragment);
+            lucide.createIcons(); // Re-initialize icons for new elements
+        };
+
+        // Filter & Sort Logic
+        const applyFiltersAndSort = () => {
+            const query = searchInput.value.toLowerCase().trim();
+            const sortMethod = sortSelect.value;
+
+            // Filter
+            filteredProducts = products.filter(p => {
+                const nameMatch = (p.nameEs || '').toLowerCase().includes(query);
+                const skuMatch = (p.sku || '').toLowerCase().includes(query);
+                const barMatch = (p.barcode || '').toLowerCase().includes(query);
+                return nameMatch || skuMatch || barMatch;
+            });
+
+            // Sort
+            if (sortMethod === 'price-asc') {
+                filteredProducts.sort((a, b) => (a.price || 0) - (b.price || 0));
+            } else if (sortMethod === 'price-desc') {
+                filteredProducts.sort((a, b) => (b.price || 0) - (a.price || 0));
+            } else if (sortMethod === 'sku-asc') {
+                filteredProducts.sort((a, b) => (a.sku || '').localeCompare(b.sku || ''));
+            }
+
+            renderCatalog(filteredProducts);
+        };
+
+        // Event Listeners for controls
+        searchInput.addEventListener('input', applyFiltersAndSort);
+        sortSelect.addEventListener('change', applyFiltersAndSort);
+
+        // CSV Parser integration
+        fileUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            grid.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+
+            Papa.parse(file, {
+                complete: function(results) {
+                    processCSVData(results.data);
+                    
+                    setTimeout(() => {
+                        loadingState.classList.add('hidden');
+                        grid.classList.remove('hidden');
+                        applyFiltersAndSort();
+                        
+                        // Reset file input so it can be uploaded again if needed
+                        fileUpload.value = '';
+                    }, 500);
+                },
+                error: function(error) {
+                    console.error("Error parsing CSV:", error);
+                    alert("Hubo un error al leer el archivo. Asegúrate de que sea un archivo CSV válido.");
+                    loadingState.classList.add('hidden');
+                    grid.classList.remove('hidden');
+                }
+            });
+        });
+
+        // Process RAW CSV Data
+        const processCSVData = (rows) => {
+            const newProducts = [];
+            
+            // Loop through rows (skip the first few header rows if they don't contain a valid SKU)
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                
+                // Typical CSV array mapping based on your format:
+                // row[1] = UBICACION, row[2] = SKU, row[3] = BARRAS
+                // row[6] = PRODUCTO ESPAÑOL, row[7] = PZS/INNER, row[8] = PZS/CAJA, row[9] = PRECIO
+                
+                // Basic validation: A valid row should at least have an SKU and some length
+                if (row.length >= 10 && row[2] && row[2].trim() !== '' && row[2].trim() !== 'SKU' && !row[2].includes('CÓD. DE BARRAS')) {
+                    
+                    // Parse price safely
+                    let rawPrice = row[9] ? row[9].replace(/,/g, '').trim() : '0';
+                    let numericPrice = parseFloat(rawPrice);
+
+                    newProducts.push({
+                        ub: row[1] ? row[1].trim() : '',
+                        sku: row[2] ? row[2].trim() : '',
+                        barcode: row[3] ? row[3].trim() : '',
+                        nameEs: row[6] ? row[6].trim() : (row[4] ? row[4].trim() : 'Producto sin nombre'), // Fallback a chino si no hay esp
+                        inner: row[7] ? row[7].trim() : '',
+                        caja: row[8] ? row[8].trim() : '',
+                        price: isNaN(numericPrice) ? 0 : numericPrice
+                    });
+                }
+            }
+
+            if(newProducts.length > 0) {
+                products = newProducts;
+                // Add success notification
+                const successDiv = document.createElement('div');
+                successDiv.className = 'fixed bottom-4 right-4 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 transition-all transform duration-500';
+                successDiv.innerHTML = `
+                    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-500"></i>
+                    <div>
+                        <p class="font-bold text-sm">¡Archivo cargado!</p>
+                        <p class="text-xs opacity-90">Se importaron ${products.length} productos correctamente.</p>
+                    </div>
+                `;
+                document.body.appendChild(successDiv);
+                lucide.createIcons();
+                
+                setTimeout(() => {
+                    successDiv.style.opacity = '0';
+                    setTimeout(() => successDiv.remove(), 500);
+                }, 4000);
+            } else {
+                alert("No se pudieron encontrar productos válidos en el archivo. Verifica el formato.");
+            }
+        };
+
+        // Initialize with sample data on load
+        window.onload = () => {
+            products = [...sampleData];
+            applyFiltersAndSort();
+        };
+
+    </script>
+</body>
+</html>
