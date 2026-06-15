@@ -10,8 +10,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- HTML2PDF para generar el catálogo descargable -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <style>
         body {
@@ -36,12 +34,44 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #94a3b8; 
         }
+
+        /* CONFIGURACIÓN NATIVA PARA EXPORTAR A PDF (PRINT) */
+        @media print {
+            @page {
+                margin: 10mm;
+            }
+            body {
+                background-color: white !important;
+            }
+            /* Ocultar barra de navegación, controles y pie de página al imprimir */
+            .print-hide {
+                display: none !important;
+            }
+            /* Forzar la cuadrícula a 3 o 4 columnas en el PDF */
+            #catalog-grid {
+                display: grid !important;
+                grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+                gap: 15px !important;
+            }
+            /* Evitar que una tarjeta se corte a la mitad entre dos páginas */
+            #catalog-grid > div {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                border: 1px solid #e2e8f0 !important;
+                box-shadow: none !important;
+            }
+            /* Forzar a que los navegadores impriman los colores de fondo */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
     </style>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
     <!-- Navbar -->
-    <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm print-hide">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16 items-center">
                 <div class="flex items-center gap-2">
@@ -65,7 +95,7 @@
                     <input type="file" id="csv-upload" accept=".csv" class="hidden">
 
                     <!-- Botón Exportar PDF -->
-                    <button id="export-pdf-btn" class="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 shadow-sm">
+                    <button id="export-pdf-btn" class="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 shadow-sm" title="Guarda como PDF usando la impresión del navegador">
                         <i data-lucide="file-down" class="w-4 h-4"></i>
                         <span class="hidden sm:inline">Exportar PDF</span>
                     </button>
@@ -78,8 +108,14 @@
     <!-- Main Content -->
     <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         
-        <!-- Header & Controls -->
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row gap-4 items-center justify-between">
+        <!-- Encabezado exclusivo para el PDF (Oculto en pantalla normal) -->
+        <div class="hidden print:block text-center mb-8 border-b-2 border-slate-200 pb-4">
+            <h1 class="text-3xl font-bold text-slate-900 uppercase tracking-wide">Catálogo de Productos</h1>
+            <p class="text-slate-500 mt-2 font-medium" id="print-subtitle"></p>
+        </div>
+
+        <!-- Header & Controls (Oculto al imprimir) -->
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row gap-4 items-center justify-between print-hide">
             <div class="relative w-full md:w-1/2 lg:w-1/3">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <i data-lucide="search" class="text-slate-400 w-5 h-5"></i>
@@ -104,12 +140,12 @@
         </div>
 
         <!-- States -->
-        <div id="loading-state" class="hidden flex-col items-center justify-center py-20">
+        <div id="loading-state" class="hidden flex-col items-center justify-center py-20 print-hide">
             <i data-lucide="loader-2" class="w-10 h-10 text-blue-600 animate-spin mb-4"></i>
             <p class="text-slate-500 font-medium" id="loading-text">Procesando catálogo...</p>
         </div>
 
-        <div id="empty-state" class="hidden flex-col items-center justify-center py-20 text-center bg-white rounded-xl border border-dashed border-slate-300">
+        <div id="empty-state" class="hidden flex-col items-center justify-center py-20 text-center bg-white rounded-xl border border-dashed border-slate-300 print-hide">
             <div class="bg-slate-50 p-4 rounded-full mb-4">
                 <i data-lucide="package-search" class="w-10 h-10 text-slate-400"></i>
             </div>
@@ -124,14 +160,11 @@
 
     </main>
 
-    <footer class="bg-white border-t border-slate-200 py-6 mt-auto">
+    <footer class="bg-white border-t border-slate-200 py-6 mt-auto print-hide">
         <div class="max-w-7xl mx-auto px-4 text-center text-sm text-slate-500">
             Catálogo interactivo generado automáticamente. Los datos se procesan de manera local en tu navegador.
         </div>
     </footer>
-
-    <!-- Contenedor oculto para generar el PDF -->
-    <div id="pdf-container" class="hidden bg-white p-8"></div>
 
     <!-- JavaScript Logic -->
     <script>
@@ -149,6 +182,7 @@
         const loadingState = document.getElementById('loading-state');
         const loadingText = document.getElementById('loading-text');
         const exportPdfBtn = document.getElementById('export-pdf-btn');
+        const printSubtitle = document.getElementById('print-subtitle');
 
         // State variables
         let products = [];
@@ -196,11 +230,11 @@
                 // Determinar si hay imagen
                 const imageHTML = product.imageUrl 
                     ? `<img src="${product.imageUrl}" class="w-full h-full object-contain bg-white p-2">`
-                    : `<i data-lucide="image" class="w-12 h-12 text-slate-300 mb-2"></i><span class="text-xs text-slate-400 font-medium">Sin imagen</span>`;
+                    : `<div class="flex flex-col items-center justify-center h-full"><i data-lucide="image" class="w-12 h-12 text-slate-300 mb-2"></i><span class="text-xs text-slate-400 font-medium">Sin imagen</span></div>`;
 
                 // Card HTML Structure
                 card.innerHTML = `
-                    <div class="bg-slate-100 h-48 w-full flex flex-col items-center justify-center relative border-b border-slate-200 overflow-hidden">
+                    <div class="bg-slate-100 h-48 w-full relative border-b border-slate-200 overflow-hidden">
                         ${imageHTML}
                         <div class="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-slate-600 shadow-sm border border-slate-100">
                             Ub: ${product.ub || 'N/D'}
@@ -294,29 +328,45 @@
         sortSelect.addEventListener('change', applyFiltersAndSort);
 
         // --- Carga masiva de Imágenes ---
-        imageUpload.addEventListener('change', (e) => {
+        imageUpload.addEventListener('change', async (e) => {
             const files = e.target.files;
             if (!files || files.length === 0) return;
 
+            // Mostrar estado de carga
+            loadingText.textContent = "Procesando y vinculando imágenes...";
+            grid.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+
             let vinculadas = 0;
+
+            // Función para leer la imagen como Base64 (garantiza que se vea al imprimir)
+            const readFileAsDataURL = (file) => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
+            };
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                // Remover la extensión para obtener solo el nombre (ej. "AA100.jpg" -> "AA100")
+                // Remover la extensión para obtener solo el nombre
                 const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "").trim();
                 
-                // Buscar producto donde SKU o Código de Barras coincida con el nombre del archivo
+                // Buscar producto
                 const product = products.find(p => 
                     p.sku.trim() === fileNameWithoutExt || 
                     (p.barcode && p.barcode.trim() === fileNameWithoutExt)
                 );
 
                 if (product) {
-                    // Crear una URL local temporal para la imagen
-                    product.imageUrl = URL.createObjectURL(file);
+                    product.imageUrl = await readFileAsDataURL(file);
                     vinculadas++;
                 }
             }
+
+            loadingState.classList.add('hidden');
+            grid.classList.remove('hidden');
 
             if (vinculadas > 0) {
                 showNotification("¡Imágenes vinculadas!", `Se asignaron ${vinculadas} fotos a los productos.`);
@@ -387,94 +437,19 @@
             }
         };
 
-        // --- Generación de PDF para Clientes ---
+        // --- Generación Nativa de PDF ---
         exportPdfBtn.addEventListener('click', () => {
             if(filteredProducts.length === 0) {
                 alert("No hay productos para exportar.");
                 return;
             }
 
-            // Mostrar estado de carga
-            grid.classList.add('hidden');
-            loadingText.textContent = "Generando PDF para cliente (esto puede tardar unos segundos)...";
-            loadingState.classList.remove('hidden');
-
-            const pdfContainer = document.getElementById('pdf-container');
+            // Actualizar la fecha y la cantidad de productos en el encabezado del PDF
             const fecha = new Date().toLocaleDateString('es-MX');
+            printSubtitle.textContent = `Generado el: ${fecha} | Total: ${filteredProducts.length} productos`;
 
-            // Construir un layout especial para imprimir, limpio y profesional
-            let htmlContent = `
-                <div style="font-family: Arial, sans-serif; padding: 20px;">
-                    <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 20px;">
-                        <h1 style="color: #1e293b; font-size: 28px; margin: 0;">Catálogo de Productos</h1>
-                        <p style="color: #64748b; font-size: 14px; margin-top: 5px;">Generado el: ${fecha} | Total: ${filteredProducts.length} productos</p>
-                    </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
-            `;
-
-            filteredProducts.forEach(product => {
-                const imgTag = product.imageUrl 
-                    ? `<img src="${product.imageUrl}" style="width: 100%; height: 160px; object-fit: contain; background: white; padding: 5px;">`
-                    : `<div style="width: 100%; height: 160px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 12px;">Sin imagen</div>`;
-
-                htmlContent += `
-                    <div style="width: calc(33.333% - 15px); min-width: 200px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; page-break-inside: avoid; background: white; margin-bottom: 15px;">
-                        <div style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
-                            ${imgTag}
-                        </div>
-                        <div style="padding: 12px;">
-                            <div style="color: #2563eb; font-size: 11px; font-weight: bold;">SKU: ${product.sku}</div>
-                            <h3 style="font-size: 13px; color: #1e293b; margin: 6px 0; line-height: 1.3; height: 34px; overflow: hidden;">${product.nameEs}</h3>
-                            <div style="color: #64748b; font-size: 10px; margin-bottom: 8px;">Código: ${product.barcode || 'N/A'}</div>
-                            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-                                <div style="font-size: 10px; color: #64748b;">
-                                    Caja: ${product.caja || '-'} pzs<br>
-                                    Inner: ${product.inner || '-'} pzs
-                                </div>
-                                <div style="color: #059669; font-size: 16px; font-weight: bold;">
-                                    ${formatPrice(product.price)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            htmlContent += `
-                    </div>
-                    <div style="text-align: center; margin-top: 30px; color: #94a3b8; font-size: 11px; page-break-before: auto;">
-                        Catálogo generado automáticamente
-                    </div>
-                </div>
-            `;
-
-            pdfContainer.innerHTML = htmlContent;
-            pdfContainer.classList.remove('hidden'); // Necesario mostrarlo brevemente para que html2pdf lo lea
-
-            // Opciones de html2pdf
-            const opt = {
-                margin:       10,
-                filename:     `Catalogo_Productos_${new Date().getTime()}.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            // Generar PDF
-            html2pdf().set(opt).from(pdfContainer).save().then(() => {
-                // Restaurar vista una vez descargado
-                pdfContainer.classList.add('hidden');
-                pdfContainer.innerHTML = '';
-                loadingState.classList.add('hidden');
-                grid.classList.remove('hidden');
-                showNotification("¡PDF Creado!", "Tu catálogo se ha descargado exitosamente.");
-            }).catch(err => {
-                console.error("Error al generar PDF:", err);
-                alert("Hubo un problema al generar el PDF. Intenta con menos productos.");
-                pdfContainer.classList.add('hidden');
-                loadingState.classList.add('hidden');
-                grid.classList.remove('hidden');
-            });
+            // Ejecutar la ventana de impresión del navegador
+            window.print();
         });
 
         // Initialize with sample data on load
